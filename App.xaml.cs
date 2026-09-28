@@ -8,8 +8,9 @@ using WinUIEx;
 namespace TrayVoiceNotes;
 
 /// <summary>
-/// Tray-only application: no window at launch, just a notification-area icon that toggles the
-/// flyout. Windows exist only while they're in use; the idle app is an icon and little else.
+/// Tray-only application: no window at launch, just a notification-area icon. Left-click toggles
+/// the flyout; right-click starts and stops (or pauses) a recording, and the icon turns red while
+/// recording. Windows exist only while they're in use; the idle app is an icon and little else.
 /// </summary>
 public partial class App : Application
 {
@@ -18,6 +19,7 @@ public partial class App : Application
     private const string MutexName = "Local\\TrayVoiceNotes_SingleInstance";
     private const string ShowEventName = "Local\\TrayVoiceNotes_ShowFlyout";
     private const int MaxTooltipLength = 127; // NOTIFYICONDATA.szTip limit
+    private const int VK_SHIFT = 0x10;
 
     // Startup leaves JIT and first-request state behind that the idle app never touches again.
     private static readonly TimeSpan StartupTrimDelay = TimeSpan.FromSeconds(30);
@@ -27,7 +29,6 @@ public partial class App : Application
     private RegisteredWaitHandle? _showWait;
     private TrayIcon? _trayIcon;
     private TrayFlyoutWindow? _flyout;
-    private SettingsWindow? _settings;
     private DispatcherQueue? _dispatcher;
     private bool _isExiting;
 
@@ -74,6 +75,9 @@ public partial class App : Application
 
         InitializeTrayIcon();
 
+        // Loading the index is cheap, and it resumes any transcription an exit interrupted.
+        _ = NoteStore.Notes;
+
         // First run: show where the app lives instead of launching into silence.
         if (!SettingsService.HasLaunchedBefore)
         {
@@ -86,7 +90,7 @@ public partial class App : Application
         }
     }
 
-    /// <summary>Sets the tray tooltip under the app name, e.g. "3 new" or null for just the name.</summary>
+    /// <summary>Sets the tray tooltip under the app name, e.g. "Recording" or null for just the name.</summary>
     public void SetTrayStatus(string? status)
     {
         if (_trayIcon is null)
@@ -102,24 +106,90 @@ public partial class App : Application
     {
         TrayFlyoutWindow flyout = EnsureFlyout();
         flyout.HidePopup();
+        flyout.ShowMainPage();
         flyout.ShowPopup();
     }
 
     public void ShowSettings()
     {
-        _flyout?.HidePopup();
-        if (_settings is null)
+        TrayFlyoutWindow flyout = EnsureFlyout();
+        flyout.ShowSettingsPage();
+        if (!flyout.IsPopupVisible)
         {
-            _settings = new SettingsWindow();
-            _settings.Closed += (_, _) =>
-            {
-                _settings = null;
-                ReleaseIdleResourcesIfNoWindows();
-            };
+            flyout.ShowPopup();
+        }
+    }
+
+    public Task StartRecordingAsync()
+    {
+        try
+        {
+            RecordingService.Start();
+        }
+        catch (Exception ex) when (ex is NAudio.MmException or IOException or UnauthorizedAccessException or InvalidOperationException)
+        {
+            ShowMicrophoneError(ex);
         }
 
-        _settings.Activate();
-        _settings.BringToFront();
+        return Task.CompletedTask;
+    }
+
+    public async Task ResumeRecordingAsync()
+    {
+        try
+        {
+            RecordingService.Resume();
+        }
+        catch (Exception ex) when (ex is NAudio.MmException or InvalidOperationException)
+        {
+            // The device went away while paused: keep what was captured.
+            await RecordingService.StopAsync();
+            ShowMicrophoneError(ex);
+        }
+    }
+
+    public async void ExitApp()
+    {
+        if (_isExiting)
+        {
+            return;
+        }
+
+        _isExiting = true;
+
+        // Keep a recording in progress rather than losing it; it's transcribed on the next launch.
+        await RecordingService.StopAsync();
+        PlaybackService.Unload();
+        NoteStore.Flush();
+        _flyout?.CloseWindow();
+
+        if (_trayIcon is not null)
+        {
+            _trayIcon.IsVisible = false;
+            _trayIcon.Dispose();
+            _trayIcon = null;
+        }
+
+        _showWait?.Unregister(null);
+        _showEvent?.Dispose();
+        _singleInstanceMutex?.ReleaseMutex();
+        _singleInstanceMutex?.Dispose();
+        Exit();
+    }
+
+    private void ShowMicrophoneError(Exception ex)
+    {
+        TrayFlyoutWindow flyout = EnsureFlyout();
+        if (!flyout.IsPopupVisible)
+        {
+            flyout.ShowPopup();
+        }
+
+        flyout.ShowError(
+            "Can't use the microphone",
+            ex is NAudio.MmException { Result: NAudio.MmResult.BadDeviceId }
+                ? "No microphone was found. Connect one and try again."
+                : "Check that a microphone is connected and that desktop apps may use it in Settings > Privacy & security > Microphone.");
     }
 
     private void InitializeTrayIcon()
@@ -129,28 +199,94 @@ public partial class App : Application
         _trayIcon.ContextMenu += TrayIcon_ContextMenu;
         _trayIcon.IsVisible = true;
         WindowPlacementService.SetTrayIcon(_trayIcon);
-        SystemThemeService.Changed += (_, _) => _dispatcher?.TryEnqueue(() => _trayIcon?.SetIcon(TrayIconPath));
+        SystemThemeService.Changed += (_, _) => _dispatcher?.TryEnqueue(UpdateTrayIcon);
+        RecordingService.StateChanged += (_, _) => UpdateTrayIcon();
+        TranscriptionService.StatusChanged += (_, _) => UpdateTrayIcon();
     }
 
-    // A white glyph disappears on a light taskbar, which follows the Windows theme, not the app theme.
-    private static string TrayIconPath => Path.Combine(
-        AppContext.BaseDirectory, "Assets", SystemThemeService.IsLight ? "AppIcon-dark.ico" : "AppIcon.ico");
+    private void UpdateTrayIcon()
+    {
+        _trayIcon?.SetIcon(TrayIconPath);
 
-    private void TrayIcon_ContextMenu(TrayIcon sender, TrayIconEventArgs args)
+        bool rightClickRecords = SettingsService.RightClickAction == RightClickAction.Record;
+        bool pauseMode = SettingsService.WhileRecordingAction == WhileRecordingAction.Pause;
+        SetTrayStatus(RecordingService.State switch
+        {
+            RecorderState.Recording when rightClickRecords => pauseMode ? "Recording · right-click to pause" : "Recording · right-click to stop",
+            RecorderState.Recording => "Recording",
+            RecorderState.Paused when rightClickRecords => pauseMode ? "Paused · right-click to resume" : "Paused · right-click to stop",
+            RecorderState.Paused => "Paused",
+            _ => TranscriptionService.StatusText is { } status ? $"{status}…" : null,
+        });
+    }
+
+    // Recording states use red icons, which read on both taskbar themes. Otherwise a white glyph
+    // disappears on a light taskbar, which follows the Windows theme, not the app theme.
+    private static string TrayIconPath => Path.Combine(AppContext.BaseDirectory, "Assets", RecordingService.State switch
+    {
+        RecorderState.Recording => "Recording.ico",
+        RecorderState.Paused => "Paused.ico",
+        _ => SystemThemeService.IsLight ? "AppIcon-dark.ico" : "AppIcon.ico",
+    });
+
+    private async void TrayIcon_ContextMenu(TrayIcon sender, TrayIconEventArgs args)
+    {
+        bool shiftHeld = (Windows.Win32.PInvoke.GetKeyState(VK_SHIFT) & 0x8000) != 0;
+        TrayRightClickResult result = TrayClickPolicy.Decide(
+            RecordingService.State, SettingsService.RightClickAction, SettingsService.WhileRecordingAction, shiftHeld);
+
+        switch (result)
+        {
+            case TrayRightClickResult.ShowMenu:
+                args.Flyout = BuildMenu();
+                break;
+            case TrayRightClickResult.Start:
+                await StartRecordingAsync();
+                break;
+            case TrayRightClickResult.Pause:
+                await RecordingService.PauseAsync();
+                break;
+            case TrayRightClickResult.Resume:
+                await ResumeRecordingAsync();
+                break;
+            case TrayRightClickResult.Stop:
+                await RecordingService.StopAsync();
+                break;
+        }
+    }
+
+    // Built fresh each time so the recording items match the current state.
+    private MenuFlyout BuildMenu()
     {
         MenuFlyout menu = new();
-        MenuFlyoutItem open = new() { Text = $"Open {DisplayName}", Icon = new FontIcon { Glyph = "" } };
-        open.Click += (_, _) => ShowFlyout();
-        MenuFlyoutItem settings = new() { Text = "Settings", Icon = new FontIcon { Glyph = "" } };
-        settings.Click += (_, _) => ShowSettings();
-        MenuFlyoutItem exit = new() { Text = "Exit", Icon = new FontIcon { Glyph = "" } };
-        exit.Click += (_, _) => ExitApp();
+        switch (RecordingService.State)
+        {
+            case RecorderState.Idle:
+                menu.Items.Add(MenuItem("Start recording", "", () => _ = StartRecordingAsync()));
+                break;
+            case RecorderState.Recording:
+                menu.Items.Add(MenuItem("Stop and transcribe", "", () => _ = RecordingService.StopAsync()));
+                menu.Items.Add(MenuItem("Pause recording", "", () => _ = RecordingService.PauseAsync()));
+                break;
+            case RecorderState.Paused:
+                menu.Items.Add(MenuItem("Stop and transcribe", "", () => _ = RecordingService.StopAsync()));
+                menu.Items.Add(MenuItem("Resume recording", "", () => _ = ResumeRecordingAsync()));
+                break;
+        }
 
-        menu.Items.Add(open);
-        menu.Items.Add(settings);
         menu.Items.Add(new MenuFlyoutSeparator());
-        menu.Items.Add(exit);
-        args.Flyout = menu;
+        menu.Items.Add(MenuItem("Open voice notes", "", ShowFlyout));
+        menu.Items.Add(MenuItem("Settings", "", ShowSettings));
+        menu.Items.Add(new MenuFlyoutSeparator());
+        menu.Items.Add(MenuItem("Exit", "", ExitApp));
+        return menu;
+    }
+
+    private static MenuFlyoutItem MenuItem(string text, string glyph, Action action)
+    {
+        MenuFlyoutItem item = new() { Text = text, Icon = new FontIcon { Glyph = glyph } };
+        item.Click += (_, _) => action();
+        return item;
     }
 
     private TrayFlyoutWindow EnsureFlyout()
@@ -171,30 +307,10 @@ public partial class App : Application
 
     private void ReleaseIdleResourcesIfNoWindows()
     {
-        if (_flyout is null && _settings is null && !_isExiting)
+        if (_flyout is null && !_isExiting)
         {
             MemoryService.ReleaseIdle();
         }
-    }
-
-    private void ExitApp()
-    {
-        _isExiting = true;
-        _flyout?.CloseWindow();
-        _settings?.Close();
-
-        if (_trayIcon is not null)
-        {
-            _trayIcon.IsVisible = false;
-            _trayIcon.Dispose();
-            _trayIcon = null;
-        }
-
-        _showWait?.Unregister(null);
-        _showEvent?.Dispose();
-        _singleInstanceMutex?.ReleaseMutex();
-        _singleInstanceMutex?.Dispose();
-        Exit();
     }
 
     private static void LogCrash(Exception? ex)

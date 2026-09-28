@@ -3,10 +3,13 @@
     x:Class="TrayVoiceNotes.Views.FlyoutPage"
     xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:controls="using:TrayVoiceNotes.Controls"
+    xmlns:models="using:TrayVoiceNotes.Models"
     Background="Transparent">
 
-    <Grid Padding="16,12,12,16" RowSpacing="12">
+    <Grid Padding="16,12,12,12" RowSpacing="10">
         <Grid.RowDefinitions>
+            <RowDefinition Height="Auto" />
             <RowDefinition Height="Auto" />
             <RowDefinition Height="Auto" />
             <RowDefinition Height="*" />
@@ -21,18 +24,17 @@
                 <ColumnDefinition Width="Auto" />
             </Grid.ColumnDefinitions>
             <TextBlock
-                x:Name="TitleText"
                 VerticalAlignment="Center"
                 Style="{StaticResource SubtitleTextBlockStyle}"
-                Text="Tray Voice Notes" />
+                Text="Voice notes" />
             <Button
-                x:Name="RefreshButton"
+                x:Name="RecordButton"
                 Grid.Column="1"
-                AutomationProperties.Name="Refresh"
-                Click="RefreshButton_Click"
+                AutomationProperties.Name="Start recording"
+                Click="RecordButton_Click"
                 Style="{StaticResource FlyoutIconButtonStyle}"
-                ToolTipService.ToolTip="Refresh">
-                <FontIcon FontSize="14" Glyph="&#xE72C;" />
+                ToolTipService.ToolTip="Start recording">
+                <FontIcon FontSize="14" Glyph="&#xE720;" />
             </Button>
             <Button
                 Grid.Column="2"
@@ -44,47 +46,239 @@
             </Button>
         </Grid>
 
-        <!--  Errors keep the last good content visible underneath  -->
+        <!--  Live recording  -->
+        <Grid
+            x:Name="RecordingPanel"
+            Grid.Row="1"
+            Padding="12,10"
+            Background="{ThemeResource CardBackgroundFillColorDefaultBrush}"
+            BorderBrush="{ThemeResource SystemFillColorCriticalBrush}"
+            BorderThickness="1"
+            ColumnSpacing="10"
+            CornerRadius="8"
+            Visibility="Collapsed">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="Auto" />
+                <ColumnDefinition Width="*" />
+                <ColumnDefinition Width="Auto" />
+                <ColumnDefinition Width="Auto" />
+                <ColumnDefinition Width="Auto" />
+            </Grid.ColumnDefinitions>
+            <Ellipse
+                x:Name="RecordingDot"
+                Width="10"
+                Height="10"
+                VerticalAlignment="Center"
+                Fill="{ThemeResource SystemFillColorCriticalBrush}" />
+            <StackPanel Grid.Column="1" VerticalAlignment="Center" Spacing="4">
+                <StackPanel Orientation="Horizontal" Spacing="8">
+                    <TextBlock
+                        x:Name="RecordingStateText"
+                        Style="{StaticResource BodyStrongTextBlockStyle}"
+                        Text="Recording" />
+                    <TextBlock
+                        x:Name="ElapsedText"
+                        Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                        Text="0:00" />
+                </StackPanel>
+                <ProgressBar
+                    x:Name="LevelMeter"
+                    AutomationProperties.Name="Input level"
+                    Maximum="1"
+                    Value="0" />
+            </StackPanel>
+            <Button
+                x:Name="PauseButton"
+                Grid.Column="2"
+                AutomationProperties.Name="Pause recording"
+                Click="PauseButton_Click"
+                Style="{StaticResource FlyoutIconButtonStyle}"
+                ToolTipService.ToolTip="Pause recording">
+                <FontIcon x:Name="PauseGlyph" FontSize="14" Glyph="&#xE769;" />
+            </Button>
+            <Button
+                Grid.Column="3"
+                AutomationProperties.Name="Stop and save"
+                Click="StopButton_Click"
+                Style="{StaticResource FlyoutIconButtonStyle}"
+                ToolTipService.ToolTip="Stop and save">
+                <FontIcon FontSize="14" Foreground="{ThemeResource SystemFillColorCriticalBrush}" Glyph="&#xE71A;" />
+            </Button>
+            <Button
+                Grid.Column="4"
+                AutomationProperties.Name="Discard recording"
+                Click="DiscardButton_Click"
+                Style="{StaticResource FlyoutIconButtonStyle}"
+                ToolTipService.ToolTip="Discard recording">
+                <FontIcon FontSize="14" Glyph="&#xE74D;" />
+            </Button>
+        </Grid>
+
         <InfoBar
             x:Name="StatusBar"
-            Grid.Row="1"
-            IsClosable="False"
-            IsOpen="False"
-            Severity="Warning" />
-
-        <!--  Content: replace with the app's own view  -->
-        <Border
             Grid.Row="2"
-            Padding="16"
-            Background="{ThemeResource CardBackgroundFillColorDefaultBrush}"
-            BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
-            BorderThickness="1"
-            CornerRadius="8">
-            <StackPanel VerticalAlignment="Center" Spacing="4">
-                <TextBlock
-                    x:Name="ValueText"
-                    HorizontalAlignment="Center"
-                    Style="{StaticResource TitleLargeTextBlockStyle}"
-                    Text="--" />
-                <TextBlock
-                    HorizontalAlignment="Center"
-                    Foreground="{ThemeResource TextFillColorSecondaryBrush}"
-                    Text="Replace this card with the app's content." />
-            </StackPanel>
-        </Border>
+            IsClosable="True"
+            IsOpen="False"
+            Severity="Warning">
+            <InfoBar.ActionButton>
+                <Button x:Name="RetryButton" Click="RetryButton_Click" Content="Try again" Visibility="Collapsed" />
+            </InfoBar.ActionButton>
+        </InfoBar>
 
-        <!--  Footer  -->
-        <Grid Grid.Row="3">
+        <!--  Recordings  -->
+        <ListView
+            x:Name="NotesList"
+            Grid.Row="3"
+            Margin="-4,0,-4,0"
+            IsItemClickEnabled="True"
+            ItemClick="NotesList_ItemClick"
+            SelectionMode="None">
+            <ListView.ItemContainerStyle>
+                <Style BasedOn="{StaticResource DefaultListViewItemStyle}" TargetType="ListViewItem">
+                    <Setter Property="Padding" Value="4,0" />
+                    <Setter Property="Margin" Value="0,0,0,6" />
+                    <Setter Property="HorizontalContentAlignment" Value="Stretch" />
+                </Style>
+            </ListView.ItemContainerStyle>
+            <ListView.ItemTemplate>
+                <DataTemplate x:DataType="models:VoiceNote">
+                    <Grid
+                        Padding="8,8,12,10"
+                        Background="{ThemeResource CardBackgroundFillColorDefaultBrush}"
+                        BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
+                        BorderThickness="1"
+                        ColumnSpacing="8"
+                        CornerRadius="8"
+                        RowSpacing="6">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="Auto" />
+                            <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="Auto" />
+                        </Grid.ColumnDefinitions>
+                        <Grid.RowDefinitions>
+                            <RowDefinition Height="Auto" />
+                            <RowDefinition Height="Auto" />
+                            <RowDefinition Height="Auto" />
+                        </Grid.RowDefinitions>
+
+                        <Button
+                            Width="36"
+                            Height="36"
+                            Padding="0"
+                            VerticalAlignment="Center"
+                            AutomationProperties.Name="{x:Bind PlayLabel, Mode=OneWay}"
+                            Click="PlayButton_Click"
+                            CornerRadius="18"
+                            Tag="{x:Bind}"
+                            ToolTipService.ToolTip="{x:Bind PlayLabel, Mode=OneWay}">
+                            <FontIcon FontSize="14" Glyph="{x:Bind PlayGlyph, Mode=OneWay}" />
+                        </Button>
+                        <StackPanel Grid.Column="1" VerticalAlignment="Center">
+                            <TextBlock
+                                MaxLines="1"
+                                Style="{StaticResource BodyStrongTextBlockStyle}"
+                                Text="{x:Bind Title, Mode=OneWay}"
+                                TextTrimming="CharacterEllipsis" />
+                            <TextBlock
+                                Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                                Style="{StaticResource CaptionTextBlockStyle}"
+                                Text="{x:Bind Subtitle, Mode=OneWay}" />
+                        </StackPanel>
+                        <FontIcon
+                            Grid.Column="2"
+                            VerticalAlignment="Top"
+                            AutomationProperties.Name="Has notes"
+                            FontSize="12"
+                            Foreground="{ThemeResource TextFillColorTertiaryBrush}"
+                            Glyph="&#xE70B;"
+                            ToolTipService.ToolTip="Has notes"
+                            Visibility="{x:Bind HasNotes, Mode=OneWay}" />
+
+                        <controls:WaveformView
+                            Grid.Row="1"
+                            Grid.ColumnSpan="3"
+                            Height="28"
+                            BarBrush="{ThemeResource ControlStrongFillColorDisabledBrush}"
+                            IsSeekEnabled="True"
+                            Peaks="{x:Bind Peaks, Mode=OneWay}"
+                            PlayedBrush="{ThemeResource AccentFillColorDefaultBrush}"
+                            Progress="{x:Bind PlaybackProgress, Mode=OneWay}"
+                            SeekRequested="Waveform_SeekRequested"
+                            Tag="{x:Bind}" />
+
+                        <TextBlock
+                            Grid.Row="2"
+                            Grid.ColumnSpan="3"
+                            Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                            MaxLines="2"
+                            Style="{StaticResource CaptionTextBlockStyle}"
+                            Text="{x:Bind Preview, Mode=OneWay}"
+                            TextTrimming="CharacterEllipsis"
+                            TextWrapping="Wrap"
+                            Visibility="{x:Bind HasPreview, Mode=OneWay}" />
+                        <StackPanel
+                            Grid.Row="2"
+                            Grid.ColumnSpan="3"
+                            Orientation="Horizontal"
+                            Spacing="6"
+                            Visibility="{x:Bind HasStatus, Mode=OneWay}">
+                            <ProgressRing
+                                Width="12"
+                                Height="12"
+                                IsActive="{x:Bind IsBusy, Mode=OneWay}"
+                                Visibility="{x:Bind IsBusy, Mode=OneWay}" />
+                            <TextBlock
+                                Foreground="{ThemeResource TextFillColorTertiaryBrush}"
+                                Style="{StaticResource CaptionTextBlockStyle}"
+                                Text="{x:Bind StatusText, Mode=OneWay}"
+                                TextWrapping="Wrap" />
+                        </StackPanel>
+                    </Grid>
+                </DataTemplate>
+            </ListView.ItemTemplate>
+        </ListView>
+
+        <!--  Empty state  -->
+        <StackPanel
+            x:Name="EmptyPanel"
+            Grid.Row="3"
+            MaxWidth="280"
+            HorizontalAlignment="Center"
+            VerticalAlignment="Center"
+            Spacing="8"
+            Visibility="Collapsed">
+            <FontIcon
+                FontSize="32"
+                Foreground="{ThemeResource TextFillColorTertiaryBrush}"
+                Glyph="&#xE720;" />
             <TextBlock
-                x:Name="UpdatedText"
+                HorizontalAlignment="Center"
+                Style="{StaticResource BodyStrongTextBlockStyle}"
+                Text="No recordings yet" />
+            <TextBlock
+                x:Name="EmptyHint"
+                HorizontalAlignment="Center"
+                Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                TextAlignment="Center"
+                TextWrapping="Wrap" />
+        </StackPanel>
+
+        <!--  Footer: transcription / model download status  -->
+        <Grid x:Name="Footer" Grid.Row="4" ColumnSpacing="8" Visibility="Collapsed">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="*" />
+                <ColumnDefinition Width="Auto" />
+            </Grid.ColumnDefinitions>
+            <TextBlock
+                x:Name="FooterText"
                 VerticalAlignment="Center"
                 Foreground="{ThemeResource TextFillColorTertiaryBrush}"
                 Style="{StaticResource CaptionTextBlockStyle}" />
             <ProgressRing
-                x:Name="LoadingRing"
+                x:Name="FooterRing"
+                Grid.Column="1"
                 Width="16"
                 Height="16"
-                HorizontalAlignment="Right"
                 IsActive="False" />
         </Grid>
     </Grid>

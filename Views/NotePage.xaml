@@ -1,0 +1,167 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Page
+    x:Class="TrayVoiceNotes.Views.NotePage"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:controls="using:TrayVoiceNotes.Controls"
+    Background="Transparent">
+
+    <Grid Padding="8,12,12,12" RowSpacing="10">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="*" />
+        </Grid.RowDefinitions>
+
+        <!--  Header  -->
+        <Grid ColumnSpacing="4">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="Auto" />
+                <ColumnDefinition Width="*" />
+                <ColumnDefinition Width="Auto" />
+                <ColumnDefinition Width="Auto" />
+            </Grid.ColumnDefinitions>
+            <Button
+                x:Name="BackButton"
+                AutomationProperties.Name="Back"
+                Click="BackButton_Click"
+                Style="{StaticResource FlyoutIconButtonStyle}"
+                ToolTipService.ToolTip="Back">
+                <FontIcon FontSize="14" Glyph="&#xE72B;" />
+            </Button>
+            <TextBlock
+                x:Name="HeaderText"
+                Grid.Column="1"
+                Margin="4,0,0,0"
+                VerticalAlignment="Center"
+                Style="{StaticResource BodyStrongTextBlockStyle}"
+                TextTrimming="CharacterEllipsis" />
+            <Button
+                Grid.Column="2"
+                AutomationProperties.Name="Copy transcript"
+                Click="CopyButton_Click"
+                Style="{StaticResource FlyoutIconButtonStyle}"
+                ToolTipService.ToolTip="Copy transcript">
+                <FontIcon FontSize="14" Glyph="&#xE8C8;" />
+            </Button>
+            <Button
+                Grid.Column="3"
+                AutomationProperties.Name="Delete recording"
+                Style="{StaticResource FlyoutIconButtonStyle}"
+                ToolTipService.ToolTip="Delete recording">
+                <FontIcon FontSize="14" Glyph="&#xE74D;" />
+                <Button.Flyout>
+                    <Flyout x:Name="DeleteFlyout">
+                        <StackPanel MaxWidth="240" Spacing="12">
+                            <TextBlock Text="Delete this recording and its transcript and notes?" TextWrapping="Wrap" />
+                            <Button
+                                Click="ConfirmDelete_Click"
+                                Content="Delete"
+                                Style="{StaticResource AccentButtonStyle}" />
+                        </StackPanel>
+                    </Flyout>
+                </Button.Flyout>
+            </Button>
+        </Grid>
+
+        <!--  Player  -->
+        <Grid
+            Grid.Row="1"
+            Margin="8,0,0,0"
+            Padding="10,10,12,8"
+            Background="{ThemeResource CardBackgroundFillColorDefaultBrush}"
+            BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
+            BorderThickness="1"
+            ColumnSpacing="10"
+            CornerRadius="8"
+            RowSpacing="4">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="Auto" />
+                <ColumnDefinition Width="*" />
+            </Grid.ColumnDefinitions>
+            <Grid.RowDefinitions>
+                <RowDefinition Height="Auto" />
+                <RowDefinition Height="Auto" />
+            </Grid.RowDefinitions>
+            <Button
+                x:Name="PlayButton"
+                Grid.RowSpan="2"
+                Width="44"
+                Height="44"
+                Padding="0"
+                VerticalAlignment="Center"
+                Click="PlayButton_Click"
+                CornerRadius="22"
+                Style="{StaticResource AccentButtonStyle}">
+                <FontIcon x:Name="PlayGlyph" FontSize="16" />
+            </Button>
+            <controls:WaveformView
+                x:Name="Waveform"
+                Grid.Column="1"
+                Height="48"
+                BarBrush="{ThemeResource ControlStrongFillColorDisabledBrush}"
+                IsSeekEnabled="True"
+                PlayedBrush="{ThemeResource AccentFillColorDefaultBrush}"
+                SeekRequested="Waveform_SeekRequested" />
+            <Grid Grid.Row="1" Grid.Column="1">
+                <TextBlock
+                    x:Name="PositionText"
+                    Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                    Style="{StaticResource CaptionTextBlockStyle}" />
+                <TextBlock
+                    x:Name="DurationText"
+                    HorizontalAlignment="Right"
+                    Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                    Style="{StaticResource CaptionTextBlockStyle}" />
+            </Grid>
+        </Grid>
+
+        <ScrollViewer Grid.Row="2" Margin="8,0,-12,0" Padding="0,0,12,0">
+            <StackPanel Spacing="8">
+                <Grid>
+                    <TextBlock
+                        VerticalAlignment="Center"
+                        Style="{StaticResource BodyStrongTextBlockStyle}"
+                        Text="Transcript" />
+                    <StackPanel HorizontalAlignment="Right" Orientation="Horizontal" Spacing="6">
+                        <ProgressRing x:Name="TranscribingRing" Width="14" Height="14" IsActive="False" />
+                        <TextBlock
+                            x:Name="TranscriptStatusText"
+                            VerticalAlignment="Center"
+                            Foreground="{ThemeResource TextFillColorTertiaryBrush}"
+                            Style="{StaticResource CaptionTextBlockStyle}" />
+                        <Button
+                            x:Name="RetranscribeButton"
+                            AutomationProperties.Name="Transcribe again"
+                            Click="RetranscribeButton_Click"
+                            Style="{StaticResource FlyoutIconButtonStyle}"
+                            ToolTipService.ToolTip="Transcribe again (replaces your edits)">
+                            <FontIcon FontSize="12" Glyph="&#xE72C;" />
+                        </Button>
+                    </StackPanel>
+                </Grid>
+                <TextBox
+                    x:Name="TranscriptBox"
+                    MinHeight="120"
+                    AcceptsReturn="True"
+                    AutomationProperties.Name="Transcript"
+                    PlaceholderText="The transcript appears here when it's ready. You can correct it."
+                    TextChanged="TranscriptBox_TextChanged"
+                    TextWrapping="Wrap" />
+
+                <TextBlock
+                    Margin="0,8,0,0"
+                    Style="{StaticResource BodyStrongTextBlockStyle}"
+                    Text="Notes" />
+                <TextBox
+                    x:Name="NotesBox"
+                    MinHeight="90"
+                    AcceptsReturn="True"
+                    AutomationProperties.Name="Notes"
+                    PlaceholderText="Add notes"
+                    TextChanged="NotesBox_TextChanged"
+                    TextWrapping="Wrap" />
+            </StackPanel>
+        </ScrollViewer>
+    </Grid>
+</Page>

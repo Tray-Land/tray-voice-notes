@@ -19,3 +19,4 @@ SetProcessWorkingSetSize
 SetWindowLong
 SHAppBarMessage
 Shell_NotifyIconGetRect
+GetKeyState

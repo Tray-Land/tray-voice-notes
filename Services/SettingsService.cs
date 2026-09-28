@@ -24,6 +24,36 @@ internal static class SettingsService
         set => Set(nameof(HasLaunchedBefore), value);
     }
 
+    public static RightClickAction RightClickAction
+    {
+        get => (RightClickAction)Get(nameof(RightClickAction), (int)RightClickAction.Record);
+        set => Set(nameof(RightClickAction), (int)value);
+    }
+
+    public static WhileRecordingAction WhileRecordingAction
+    {
+        get => (WhileRecordingAction)Get(nameof(WhileRecordingAction), (int)WhileRecordingAction.Stop);
+        set => Set(nameof(WhileRecordingAction), (int)value);
+    }
+
+    /// <summary>WinMM input device number; -1 is the Windows default microphone.</summary>
+    public static int MicrophoneDevice
+    {
+        get => Get(nameof(MicrophoneDevice), -1);
+        set => Set(nameof(MicrophoneDevice), value);
+    }
+
+    /// <summary>ggml model name, e.g. "base.en"; see <see cref="ModelService.Models"/>.</summary>
+    public static string WhisperModel
+    {
+        get => ModelService.Sanitize(Get<string?>(nameof(WhisperModel), null));
+        set => Set(nameof(WhisperModel), ModelService.Sanitize(value));
+    }
+
+    public static event EventHandler? Changed;
+
+    public static void RaiseChanged() => Changed?.Invoke(null, EventArgs.Empty);
+
     public static T? GetJson<T>(string key, JsonTypeInfo<T> typeInfo)
     {
         if (Get<string?>(key, null) is not { } json)

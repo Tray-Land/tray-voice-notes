@@ -4,6 +4,7 @@ using Microsoft.UI.Windowing;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Input;
 using TrayVoiceNotes.Controls;
+using TrayVoiceNotes.Models;
 using TrayVoiceNotes.Services;
 using Windows.Graphics;
 using Windows.UI.ViewManagement;
@@ -24,8 +25,8 @@ namespace TrayVoiceNotes.Views;
 /// </summary>
 public sealed partial class TrayFlyoutWindow : WindowEx
 {
-    private const int PopupWidth = 360;
-    private const int PopupHeight = 480;
+    private const int PopupWidth = 400;
+    private const int PopupHeight = 600;
 
     private const int WS_EX_TOOLWINDOW = 0x00000080;
     private const int WS_EX_LAYERED = 0x00080000;
@@ -46,7 +47,7 @@ public sealed partial class TrayFlyoutWindow : WindowEx
     private static readonly TimeSpan CloseDelay = TimeSpan.FromMinutes(1);
 
     private readonly HWND _hwnd;
-    private readonly FlyoutPage _page = new();
+    private readonly FlyoutPage _page;
     private readonly ShellBackdrop _backdrop = new();
     private readonly UISettings _uiSettings = new();
     private readonly DispatcherQueueTimer _hideTimer;
@@ -59,6 +60,8 @@ public sealed partial class TrayFlyoutWindow : WindowEx
     private bool _allowClose;
     private bool _isClosed;
     private DateTime _lastDismissedAtUtc = DateTime.MinValue;
+    private SettingsPage? _settingsPage;
+    private NotePage? _notePage;
 
     // Animation state: _baseX/_baseY is the resting position; the slide animates an offset below
     // it in physical pixels. _current* is where the last frame left off, so an animation that
@@ -78,6 +81,7 @@ public sealed partial class TrayFlyoutWindow : WindowEx
     {
         InitializeComponent();
         _hwnd = (HWND)WindowNative.GetWindowHandle(this);
+        _page = new FlyoutPage(ShowNotePage);
         PageHost.Content = _page;
 
         SystemBackdrop = _backdrop;
@@ -106,6 +110,82 @@ public sealed partial class TrayFlyoutWindow : WindowEx
         _animationTimer.Tick += AnimationTimer_Tick;
     }
 
+    public bool IsPopupVisible => _isPopupVisible;
+
+    public bool IsShowingMain => ReferenceEquals(PageHost.Content, _page);
+
+    public void ShowSettingsPage()
+    {
+        _settingsPage ??= new SettingsPage(ShowMainPage);
+        LeaveCurrentPage();
+        PageHost.Content = _settingsPage;
+        if (_isPopupVisible)
+        {
+            _settingsPage.OnShown();
+            _settingsPage.FocusDefault();
+        }
+    }
+
+    public void ShowNotePage(VoiceNote note)
+    {
+        _notePage ??= new NotePage(ShowMainPage);
+        LeaveCurrentPage();
+        _notePage.Show(note);
+        PageHost.Content = _notePage;
+        _notePage.FocusDefault();
+    }
+
+    public void ShowMainPage()
+    {
+        if (IsShowingMain)
+        {
+            return;
+        }
+
+        LeaveCurrentPage();
+        PageHost.Content = _page;
+        if (_isPopupVisible)
+        {
+            _page.OnShown();
+            _page.FocusDefault();
+        }
+    }
+
+    /// <summary>Shows a problem on the main page, e.g. when the microphone can't be opened.</summary>
+    public void ShowError(string title, string message)
+    {
+        ShowMainPage();
+        _page.ShowError(title, message);
+    }
+
+    private void LeaveCurrentPage()
+    {
+        switch (PageHost.Content)
+        {
+            case FlyoutPage page:
+                page.OnHidden();
+                break;
+            case SettingsPage settings:
+                settings.OnHidden();
+                break;
+            case NotePage notePage:
+                notePage.Detach();
+                break;
+        }
+    }
+
+    private void GoBackOrHide()
+    {
+        if (IsShowingMain)
+        {
+            HidePopup();
+        }
+        else
+        {
+            ShowMainPage();
+        }
+    }
+
     /// <summary>Shows the popup, or hides it if already visible (tray-icon click behavior).</summary>
     public void Toggle()
     {
@@ -120,6 +200,7 @@ public sealed partial class TrayFlyoutWindow : WindowEx
             return;
         }
 
+        ShowMainPage();
         ShowPopup();
     }
 
@@ -143,7 +224,20 @@ public sealed partial class TrayFlyoutWindow : WindowEx
         Activate();
         PInvoke.SetForegroundWindow(_hwnd);
 
-        _page.OnShown();
+        switch (PageHost.Content)
+        {
+            case SettingsPage settings:
+                settings.OnShown();
+                settings.FocusDefault();
+                break;
+            case NotePage notePage:
+                notePage.FocusDefault();
+                break;
+            default:
+                _page.OnShown();
+                _page.FocusDefault();
+                break;
+        }
     }
 
     public void HidePopup()
@@ -159,6 +253,7 @@ public sealed partial class TrayFlyoutWindow : WindowEx
         _isPopupVisible = false;
         _lastDismissedAtUtc = DateTime.UtcNow;
         _page.OnHidden();
+        _settingsPage?.OnHidden();
         PlayHideAnimation();
 
         _closeTimer.Stop();
@@ -180,8 +275,12 @@ public sealed partial class TrayFlyoutWindow : WindowEx
         _hideTimer.Stop();
         _closeTimer.Stop();
         _animationTimer.Stop();
-        _page.OnHidden();
         _page.Dispose();
+        _settingsPage?.OnHidden();
+        _settingsPage = null;
+        _notePage?.Detach();
+        _notePage = null;
+        PageHost.Content = null;
 
         _uiSettings.ColorValuesChanged -= OnColorValuesChanged;
         Activated -= OnWindowActivated;
@@ -363,6 +462,16 @@ public sealed partial class TrayFlyoutWindow : WindowEx
     private void Escape_Invoked(KeyboardAccelerator sender, KeyboardAcceleratorInvokedEventArgs args)
     {
         args.Handled = true;
-        HidePopup();
+        GoBackOrHide();
+    }
+
+    // Mouse back button goes back a page, like Escape.
+    private void PageHost_PointerPressed(object sender, PointerRoutedEventArgs e)
+    {
+        if (e.GetCurrentPoint(PageHost).Properties.IsXButton1Pressed && !IsShowingMain)
+        {
+            e.Handled = true;
+            ShowMainPage();
+        }
     }
 }
