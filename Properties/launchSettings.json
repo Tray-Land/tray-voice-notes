@@ -1,0 +1,10 @@
+{
+  "profiles": {
+    "TrayVoiceNotes (Package)": {
+      "commandName": "MsixPackage"
+    },
+    "TrayVoiceNotes (Unpackaged)": {
+      "commandName": "Project"
+    }
+  }
+}
