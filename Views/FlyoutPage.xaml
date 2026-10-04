@@ -12,6 +12,7 @@
             <RowDefinition Height="Auto" />
             <RowDefinition Height="Auto" />
             <RowDefinition Height="Auto" />
+            <RowDefinition Height="Auto" />
             <RowDefinition Height="*" />
             <RowDefinition Height="Auto" />
         </Grid.RowDefinitions>
@@ -20,6 +21,7 @@
         <Grid ColumnSpacing="4">
             <Grid.ColumnDefinitions>
                 <ColumnDefinition Width="*" />
+                <ColumnDefinition Width="Auto" />
                 <ColumnDefinition Width="Auto" />
                 <ColumnDefinition Width="Auto" />
             </Grid.ColumnDefinitions>
@@ -43,6 +45,14 @@
                 Style="{StaticResource FlyoutIconButtonStyle}"
                 ToolTipService.ToolTip="Settings">
                 <FontIcon FontSize="14" Glyph="&#xE713;" />
+            </Button>
+            <Button
+                Grid.Column="3"
+                AutomationProperties.Name="Quit"
+                Click="QuitButton_Click"
+                Style="{StaticResource FlyoutIconButtonStyle}"
+                ToolTipService.ToolTip="Quit Voice Notes">
+                <FontIcon FontSize="14" Glyph="&#xE7E8;" />
             </Button>
         </Grid>
 
@@ -125,10 +135,19 @@
             </InfoBar.ActionButton>
         </InfoBar>
 
+        <!--  Transcript search  -->
+        <AutoSuggestBox
+            x:Name="SearchBox"
+            Grid.Row="3"
+            AutomationProperties.Name="Search transcripts"
+            PlaceholderText="Search transcripts"
+            QueryIcon="Find"
+            TextChanged="SearchBox_TextChanged" />
+
         <!--  Recordings  -->
         <ListView
             x:Name="NotesList"
-            Grid.Row="3"
+            Grid.Row="4"
             Margin="-4,0,-4,0"
             IsItemClickEnabled="True"
             ItemClick="NotesList_ItemClick"
@@ -150,6 +169,18 @@
                         ColumnSpacing="8"
                         CornerRadius="8"
                         RowSpacing="6">
+                        <Grid.ContextFlyout>
+                            <MenuFlyout>
+                                <MenuFlyoutItem
+                                    Click="DeleteNoteMenuItem_Click"
+                                    Tag="{x:Bind}"
+                                    Text="Delete">
+                                    <MenuFlyoutItem.Icon>
+                                        <FontIcon Glyph="&#xE74D;" />
+                                    </MenuFlyoutItem.Icon>
+                                </MenuFlyoutItem>
+                            </MenuFlyout>
+                        </Grid.ContextFlyout>
                         <Grid.ColumnDefinitions>
                             <ColumnDefinition Width="Auto" />
                             <ColumnDefinition Width="*" />
@@ -211,6 +242,7 @@
                             Grid.ColumnSpan="3"
                             Foreground="{ThemeResource TextFillColorSecondaryBrush}"
                             MaxLines="2"
+                            controls:SearchHighlight.Query="{x:Bind SearchQuery, Mode=OneWay}"
                             Style="{StaticResource CaptionTextBlockStyle}"
                             Text="{x:Bind Preview, Mode=OneWay}"
                             TextTrimming="CharacterEllipsis"
@@ -241,7 +273,7 @@
         <!--  Empty state  -->
         <StackPanel
             x:Name="EmptyPanel"
-            Grid.Row="3"
+            Grid.Row="4"
             MaxWidth="280"
             HorizontalAlignment="Center"
             VerticalAlignment="Center"
@@ -252,6 +284,7 @@
                 Foreground="{ThemeResource TextFillColorTertiaryBrush}"
                 Glyph="&#xE720;" />
             <TextBlock
+                x:Name="EmptyTitle"
                 HorizontalAlignment="Center"
                 Style="{StaticResource BodyStrongTextBlockStyle}"
                 Text="No recordings yet" />
@@ -264,7 +297,7 @@
         </StackPanel>
 
         <!--  Footer: transcription / model download status  -->
-        <Grid x:Name="Footer" Grid.Row="4" ColumnSpacing="8" Visibility="Collapsed">
+        <Grid x:Name="Footer" Grid.Row="5" ColumnSpacing="8" Visibility="Collapsed">
             <Grid.ColumnDefinitions>
                 <ColumnDefinition Width="*" />
                 <ColumnDefinition Width="Auto" />

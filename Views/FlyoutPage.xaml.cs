@@ -1,3 +1,4 @@
+using System.Collections.ObjectModel;
 using System.Collections.Specialized;
 using Microsoft.UI.Dispatching;
 using Microsoft.UI.Xaml;
@@ -16,6 +17,7 @@ namespace TrayVoiceNotes.Views;
 public sealed partial class FlyoutPage : Page, IDisposable
 {
     private readonly Action<VoiceNote> _openNote;
+    private readonly ObservableCollection<VoiceNote> _results = [];
     private readonly DispatcherQueueTimer _elapsedTimer;
     private bool _isShown;
     private float _pendingLevel;
@@ -64,6 +66,7 @@ public sealed partial class FlyoutPage : Page, IDisposable
 
         _isShown = false;
         _elapsedTimer.Stop();
+        SearchBox.Text = string.Empty;
         NoteStore.Notes.CollectionChanged -= Notes_CollectionChanged;
         RecordingService.StateChanged -= Recording_StateChanged;
         RecordingService.LevelChanged -= Recording_LevelChanged;
@@ -100,7 +103,17 @@ public sealed partial class FlyoutPage : Page, IDisposable
         }
     }
 
-    private void Notes_CollectionChanged(object? sender, NotifyCollectionChangedEventArgs e) => UpdateEmptyState();
+    private void Notes_CollectionChanged(object? sender, NotifyCollectionChangedEventArgs e)
+    {
+        if (SearchQuery.Length > 0)
+        {
+            ApplyFilter();
+        }
+        else
+        {
+            UpdateEmptyState();
+        }
+    }
 
     private void Recording_StateChanged(object? sender, EventArgs e) => UpdateRecordingPanel();
 
@@ -120,13 +133,68 @@ public sealed partial class FlyoutPage : Page, IDisposable
         }
     }
 
-    private void Transcription_StatusChanged(object? sender, EventArgs e) => UpdateFooter();
+    private void Transcription_StatusChanged(object? sender, EventArgs e)
+    {
+        UpdateFooter();
+
+        // A transcript that just finished may now match the search.
+        if (SearchQuery.Length > 0)
+        {
+            ApplyFilter();
+        }
+    }
+
+    private string SearchQuery => SearchBox.Text.Trim();
+
+    private void SearchBox_TextChanged(AutoSuggestBox sender, AutoSuggestBoxTextChangedEventArgs args) => ApplyFilter();
+
+    /// <summary>Points the list at all notes, or at the notes whose transcript matches the search.</summary>
+    private void ApplyFilter()
+    {
+        string query = SearchQuery;
+        foreach (VoiceNote note in NoteStore.Notes)
+        {
+            note.SearchQuery = query;
+        }
+
+        if (query.Length == 0)
+        {
+            _results.Clear();
+            NotesList.ItemsSource = NoteStore.Notes;
+        }
+        else
+        {
+            _results.Clear();
+            foreach (VoiceNote note in NoteStore.Notes.Where(n => NoteSearch.Matches(n.Transcript, query)))
+            {
+                _results.Add(note);
+            }
+
+            NotesList.ItemsSource = _results;
+        }
+
+        UpdateEmptyState();
+    }
 
     private void UpdateEmptyState()
     {
-        bool empty = NoteStore.Notes.Count == 0;
+        bool noNotes = NoteStore.Notes.Count == 0;
+        bool searching = SearchQuery.Length > 0;
+        bool noMatches = searching && _results.Count == 0;
+        bool empty = noNotes || noMatches;
+
+        SearchBox.Visibility = noNotes ? Visibility.Collapsed : Visibility.Visible;
         EmptyPanel.Visibility = empty ? Visibility.Visible : Visibility.Collapsed;
         NotesList.Visibility = empty ? Visibility.Collapsed : Visibility.Visible;
+
+        if (noMatches && !noNotes)
+        {
+            EmptyTitle.Text = "No matching transcripts";
+            EmptyHint.Text = "Try a different word or phrase.";
+            return;
+        }
+
+        EmptyTitle.Text = "No recordings yet";
         EmptyHint.Text = SettingsService.RightClickAction == RightClickAction.Record
             ? "Right-click the tray icon to start recording, and again to stop. Each recording is transcribed on this PC."
             : "Select the microphone button to start recording. Each recording is transcribed on this PC.";
@@ -201,6 +269,8 @@ public sealed partial class FlyoutPage : Page, IDisposable
 
     private void SettingsButton_Click(object sender, RoutedEventArgs e) => App.Current.ShowSettings();
 
+    private void QuitButton_Click(object sender, RoutedEventArgs e) => App.Current.ExitApp();
+
     private void RetryButton_Click(object sender, RoutedEventArgs e)
     {
         StatusBar.IsOpen = false;
@@ -212,6 +282,39 @@ public sealed partial class FlyoutPage : Page, IDisposable
         if (e.ClickedItem is VoiceNote note)
         {
             _openNote(note);
+        }
+    }
+
+    private void DeleteNoteMenuItem_Click(object sender, RoutedEventArgs e)
+    {
+        if (sender is not FrameworkElement { Tag: VoiceNote note })
+        {
+            return;
+        }
+
+        Button confirm = new() { Content = "Delete", Style = (Style)Application.Current.Resources["AccentButtonStyle"] };
+        Flyout flyout = new()
+        {
+            Content = new StackPanel
+            {
+                MaxWidth = 240,
+                Spacing = 12,
+                Children =
+                {
+                    new TextBlock { Text = "Delete this recording and its transcript and notes?", TextWrapping = TextWrapping.Wrap },
+                    confirm,
+                },
+            },
+        };
+        confirm.Click += (_, _) =>
+        {
+            flyout.Hide();
+            NoteStore.Delete(note);
+        };
+
+        if (NotesList.ContainerFromItem(note) is FrameworkElement container)
+        {
+            flyout.ShowAt(container);
         }
     }
 

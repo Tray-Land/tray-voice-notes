@@ -21,6 +21,7 @@ public sealed class VoiceNote : INotifyPropertyChanged
 {
     private string _transcript = string.Empty;
     private string _notes = string.Empty;
+    private string _searchQuery = string.Empty;
     private TranscriptStatus _status;
     private string? _error;
     private byte[] _peaks = [];
@@ -131,8 +132,24 @@ public sealed class VoiceNote : INotifyPropertyChanged
     [JsonIgnore]
     public string Subtitle => $"{TextFormat.RecordedAt(CreatedAt, DateTimeOffset.Now)} · {DurationText}";
 
+    /// <summary>The flyout's current search text; the preview scrolls to and highlights it.</summary>
     [JsonIgnore]
-    public string Preview => Status == TranscriptStatus.Done ? Transcript : string.Empty;
+    public string SearchQuery
+    {
+        get => _searchQuery;
+        set
+        {
+            if (Set(ref _searchQuery, value ?? string.Empty))
+            {
+                Notify(nameof(Preview));
+            }
+        }
+    }
+
+    [JsonIgnore]
+    public string Preview => Status == TranscriptStatus.Done
+        ? (_searchQuery.Length == 0 ? Transcript : NoteSearch.Snippet(Transcript, _searchQuery))
+        : string.Empty;
 
     [JsonIgnore]
     public bool HasPreview => Status == TranscriptStatus.Done && Transcript.Length > 0;
