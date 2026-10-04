@@ -17,13 +17,6 @@ namespace TrayVoiceNotes.Services;
 /// </remarks>
 internal static class SettingsService
 {
-    /// <summary>False until the first launch has shown the flyout.</summary>
-    public static bool HasLaunchedBefore
-    {
-        get => Get(nameof(HasLaunchedBefore), false);
-        set => Set(nameof(HasLaunchedBefore), value);
-    }
-
     public static RightClickAction RightClickAction
     {
         get => (RightClickAction)Get(nameof(RightClickAction), (int)RightClickAction.Record);

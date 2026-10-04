@@ -78,15 +78,28 @@ public partial class App : Application
         // Loading the index is cheap, and it resumes any transcription an exit interrupted.
         _ = NoteStore.Notes;
 
-        // First run: show where the app lives instead of launching into silence.
-        if (!SettingsService.HasLaunchedBefore)
+        // A launch the user asked for (Start menu, search) shows the flyout so they see where the
+        // app lives; a launch at sign-in stays quiet in the tray.
+        if (!IsStartupTaskActivation())
         {
-            SettingsService.HasLaunchedBefore = true;
             ShowFlyout();
         }
         else
         {
             MemoryService.ReleaseIdle(StartupTrimDelay);
+        }
+    }
+
+    private static bool IsStartupTaskActivation()
+    {
+        try
+        {
+            return Microsoft.Windows.AppLifecycle.AppInstance.GetCurrent().GetActivatedEventArgs().Kind
+                == Microsoft.Windows.AppLifecycle.ExtendedActivationKind.StartupTask;
+        }
+        catch
+        {
+            return false;
         }
     }
 
