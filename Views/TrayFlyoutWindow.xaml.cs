@@ -59,6 +59,7 @@ public sealed partial class TrayFlyoutWindow : WindowEx
     private bool _isPopupVisible;
     private bool _allowClose;
     private bool _isClosed;
+    private bool _isModalOpen;
     private DateTime _lastDismissedAtUtc = DateTime.MinValue;
     private SettingsPage? _settingsPage;
     private NotePage? _notePage;
@@ -128,7 +129,7 @@ public sealed partial class TrayFlyoutWindow : WindowEx
 
     public void ShowNotePage(VoiceNote note)
     {
-        _notePage ??= new NotePage(ShowMainPage);
+        _notePage ??= new NotePage(ShowMainPage, _hwnd, SetModalOpen);
         LeaveCurrentPage();
         _notePage.Show(note);
         PageHost.Content = _notePage;
@@ -426,10 +427,17 @@ public sealed partial class TrayFlyoutWindow : WindowEx
         _hideTimer.Start();
     }
 
+    /// <summary>A file dialog owned by this window is open; focus leaving to it must not dismiss the popup.</summary>
+    private void SetModalOpen(bool isOpen)
+    {
+        _isModalOpen = isOpen;
+        _hideTimer.Stop();
+    }
+
     private void HideIfFocusLeftWindow()
     {
         _hideTimer.Stop();
-        if (_isPopupVisible && !ShouldRemainVisible(PInvoke.GetForegroundWindow()))
+        if (_isPopupVisible && !_isModalOpen && !ShouldRemainVisible(PInvoke.GetForegroundWindow()))
         {
             HidePopup();
         }
