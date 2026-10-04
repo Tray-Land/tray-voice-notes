@@ -23,6 +23,8 @@
     <Compile Include="..\..\Services\TrayClickPolicy.cs" Link="Linked\TrayClickPolicy.cs" />
     <Compile Include="..\..\Services\WaveformMath.cs" Link="Linked\WaveformMath.cs" />
     <Compile Include="..\..\Services\TextFormat.cs" Link="Linked\TextFormat.cs" />
+    <Compile Include="..\..\Services\NoteSearch.cs" Link="Linked\NoteSearch.cs" />
+    <Compile Include="..\..\Services\NoteExport.cs" Link="Linked\NoteExport.cs" />
   </ItemGroup>
 
 </Project>

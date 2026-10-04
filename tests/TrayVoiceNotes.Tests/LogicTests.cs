@@ -110,3 +110,105 @@ public class TextFormatTests
         Assert.StartsWith("Yesterday", TextFormat.RecordedAt(now.AddDays(-1), now));
     }
 }
+
+public class NoteSearchTests
+{
+    [Theory]
+    [InlineData("Buy milk and eggs tomorrow", "MILK", true)]
+    [InlineData("Buy milk and eggs tomorrow", "eggs milk", true)]
+    [InlineData("Buy milk and eggs tomorrow", "milk bread", false)]
+    [InlineData("Let's meet at the café", "cafe", true)]
+    [InlineData("anything", "   ", true)]
+    [InlineData("", "milk", false)]
+    public void Matches_Query_ExpectedResult(string transcript, string query, bool expected) =>
+        Assert.Equal(expected, NoteSearch.Matches(transcript, query));
+}
+
+public class NoteExportTests
+{
+    [Fact]
+    public void BaseName_CreatedAt_UsesDateAndTime() =>
+        Assert.Equal("Voice note 2026-10-04 1530", NoteExport.BaseName(new DateTimeOffset(2026, 10, 4, 15, 30, 0, TimeSpan.Zero)));
+
+    [Theory]
+    [InlineData("some notes", new[] { "n.wav", "transcript.txt", "notes.txt" })]
+    [InlineData("  ", new[] { "n.wav", "transcript.txt" })]
+    public async Task WriteZipAsync_Notes_ContainsExpectedEntries(string notes, string[] expected)
+    {
+        string wav = Path.GetTempFileName();
+        await File.WriteAllBytesAsync(wav, [1, 2, 3, 4]);
+        try
+        {
+            using MemoryStream output = new();
+            await NoteExport.WriteZipAsync(output, wav, "n", "hello transcript", notes);
+
+            output.Position = 0;
+            using System.IO.Compression.ZipArchive zip = new(output);
+            Assert.Equal(expected, zip.Entries.Select(e => e.FullName).ToArray());
+
+            using StreamReader reader = new(zip.GetEntry("transcript.txt")!.Open());
+            Assert.Equal("hello transcript", await reader.ReadToEndAsync());
+            using MemoryStream audio = new();
+            await zip.GetEntry("n.wav")!.Open().CopyToAsync(audio);
+            Assert.Equal(new byte[] { 1, 2, 3, 4 }, audio.ToArray());
+        }
+        finally
+        {
+            File.Delete(wav);
+        }
+    }
+
+    [Fact]
+    public async Task CopyAudioAsync_FileOpenElsewhere_StillCopies()
+    {
+        string wav = Path.GetTempFileName();
+        await File.WriteAllBytesAsync(wav, [9, 8, 7]);
+        try
+        {
+            await using FileStream other = new(wav, FileMode.Open, FileAccess.Read, FileShare.ReadWrite);
+            using MemoryStream output = new();
+            await NoteExport.CopyAudioAsync(wav, output);
+            Assert.Equal(new byte[] { 9, 8, 7 }, output.ToArray());
+        }
+        finally
+        {
+            File.Delete(wav);
+        }
+    }
+}
+
+public class NoteSearchHighlightTests
+{
+    [Fact]
+    public void FindRanges_RepeatedTerm_FindsEveryOccurrenceIgnoringCase()
+    {
+        var ranges = NoteSearch.FindRanges("Milk, more milk", "milk");
+        Assert.Equal([(0, 4), (11, 4)], ranges);
+    }
+
+    [Fact]
+    public void FindRanges_OverlappingTerms_AreMerged()
+    {
+        var ranges = NoteSearch.FindRanges("buttermilk", "butter milk buttermilk");
+        Assert.Equal([(0, 10)], ranges);
+    }
+
+    [Fact]
+    public void FindRanges_NoMatch_ReturnsEmpty() =>
+        Assert.Empty(NoteSearch.FindRanges("hello", "xyz"));
+
+    [Fact]
+    public void Snippet_MatchNearStart_ReturnsTextUnchanged() =>
+        Assert.Equal("Buy milk today", NoteSearch.Snippet("Buy milk today", "milk"));
+
+    [Fact]
+    public void Snippet_MatchFarIn_StartsBeforeMatchAtWordBoundary()
+    {
+        string text = "one two three four five six seven eight nine ten eleven twelve needle after";
+        string snippet = NoteSearch.Snippet(text, "needle");
+
+        Assert.StartsWith("…", snippet);
+        Assert.Contains("needle after", snippet);
+        Assert.True(snippet.Length < text.Length);
+    }
+}
