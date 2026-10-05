@@ -12,6 +12,10 @@ Tray Voice Notes is a small, tray-only Windows app for capturing quick thoughts 
 
 Built with WinUI 3, the Windows App SDK and .NET 10.
 
+<p align="center">
+  <img src="docs/screenshot.png" alt="The Tray Voice Notes flyout showing transcript search and three recordings with waveforms" width="640">
+</p>
+
 ## Features
 
 - **One-gesture recording.** Right-click the tray icon to start and right-click again to stop. The icon turns red while recording and has its own look when paused.
