@@ -161,6 +161,27 @@
             </ListView.ItemContainerStyle>
             <ListView.ItemTemplate>
                 <DataTemplate x:DataType="models:VoiceNote">
+                    <SwipeControl Tag="{x:Bind}">
+                    <SwipeControl.RightItems>
+                        <SwipeItems Mode="Reveal">
+                            <SwipeItem
+                                Background="{ThemeResource SystemFillColorAttentionBrush}"
+                                Invoked="ExportSwipeItem_Invoked"
+                                Text="Export">
+                                <SwipeItem.IconSource>
+                                    <FontIconSource Glyph="&#xE74E;" />
+                                </SwipeItem.IconSource>
+                            </SwipeItem>
+                            <SwipeItem
+                                Background="{ThemeResource SystemFillColorCriticalBrush}"
+                                Invoked="DeleteSwipeItem_Invoked"
+                                Text="Delete">
+                                <SwipeItem.IconSource>
+                                    <FontIconSource Glyph="&#xE74D;" />
+                                </SwipeItem.IconSource>
+                            </SwipeItem>
+                        </SwipeItems>
+                    </SwipeControl.RightItems>
                     <Grid
                         Padding="8,8,12,10"
                         Background="{ThemeResource CardBackgroundFillColorDefaultBrush}"
@@ -171,6 +192,23 @@
                         RowSpacing="6">
                         <Grid.ContextFlyout>
                             <MenuFlyout>
+                                <MenuFlyoutItem
+                                    Click="ExportAudioMenuItem_Click"
+                                    Tag="{x:Bind}"
+                                    Text="Save audio…">
+                                    <MenuFlyoutItem.Icon>
+                                        <FontIcon Glyph="&#xE8D6;" />
+                                    </MenuFlyoutItem.Icon>
+                                </MenuFlyoutItem>
+                                <MenuFlyoutItem
+                                    Click="ExportZipMenuItem_Click"
+                                    Tag="{x:Bind}"
+                                    Text="Save audio, transcript and notes (.zip)…">
+                                    <MenuFlyoutItem.Icon>
+                                        <FontIcon Glyph="&#xF012;" />
+                                    </MenuFlyoutItem.Icon>
+                                </MenuFlyoutItem>
+                                <MenuFlyoutSeparator />
                                 <MenuFlyoutItem
                                     Click="DeleteNoteMenuItem_Click"
                                     Tag="{x:Bind}"
@@ -266,6 +304,7 @@
                                 TextWrapping="Wrap" />
                         </StackPanel>
                     </Grid>
+                    </SwipeControl>
                 </DataTemplate>
             </ListView.ItemTemplate>
         </ListView>

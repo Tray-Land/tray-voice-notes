@@ -17,15 +17,17 @@ namespace TrayVoiceNotes.Views;
 public sealed partial class FlyoutPage : Page, IDisposable
 {
     private readonly Action<VoiceNote> _openNote;
+    private readonly NoteExporter _exporter;
     private readonly ObservableCollection<VoiceNote> _results = [];
     private readonly DispatcherQueueTimer _elapsedTimer;
     private bool _isShown;
     private float _pendingLevel;
     private int _levelQueued;
 
-    public FlyoutPage(Action<VoiceNote> openNote)
+    public FlyoutPage(Action<VoiceNote> openNote, NoteExporter exporter)
     {
         _openNote = openNote;
+        _exporter = exporter;
         InitializeComponent();
 
         _elapsedTimer = DispatcherQueue.CreateTimer();
@@ -287,11 +289,72 @@ public sealed partial class FlyoutPage : Page, IDisposable
 
     private void DeleteNoteMenuItem_Click(object sender, RoutedEventArgs e)
     {
-        if (sender is not FrameworkElement { Tag: VoiceNote note })
+        if (sender is FrameworkElement { Tag: VoiceNote note })
+        {
+            ConfirmDelete(note);
+        }
+    }
+
+    private async void ExportAudioMenuItem_Click(object sender, RoutedEventArgs e)
+    {
+        if (sender is FrameworkElement { Tag: VoiceNote note })
+        {
+            ShowExportResult(await _exporter.ExportAudioAsync(note));
+        }
+    }
+
+    private async void ExportZipMenuItem_Click(object sender, RoutedEventArgs e)
+    {
+        if (sender is FrameworkElement { Tag: VoiceNote note })
+        {
+            ShowExportResult(await _exporter.ExportZipAsync(note));
+        }
+    }
+
+    private void DeleteSwipeItem_Invoked(SwipeItem sender, SwipeItemInvokedEventArgs args)
+    {
+        if (args.SwipeControl is { Tag: VoiceNote note })
+        {
+            args.SwipeControl.Close();
+            ConfirmDelete(note);
+        }
+    }
+
+    private void ExportSwipeItem_Invoked(SwipeItem sender, SwipeItemInvokedEventArgs args)
+    {
+        if (args.SwipeControl is not { Tag: VoiceNote note } swipe)
         {
             return;
         }
 
+        swipe.Close();
+        MenuFlyoutItem audio = new() { Text = "Save audio…", Icon = new FontIcon { Glyph = "" } };
+        audio.Click += async (_, _) => ShowExportResult(await _exporter.ExportAudioAsync(note));
+        MenuFlyoutItem zip = new() { Text = "Save audio, transcript and notes (.zip)…", Icon = new FontIcon { Glyph = "" } };
+        zip.Click += async (_, _) => ShowExportResult(await _exporter.ExportZipAsync(note));
+
+        MenuFlyout menu = new();
+        menu.Items.Add(audio);
+        menu.Items.Add(zip);
+        menu.ShowAt(swipe);
+    }
+
+    private void ShowExportResult(ExportResult result)
+    {
+        if (result.IsCancelled)
+        {
+            return;
+        }
+
+        StatusBar.Title = result.Title;
+        StatusBar.Message = result.Message;
+        StatusBar.Severity = result.Severity;
+        RetryButton.Visibility = Visibility.Collapsed;
+        StatusBar.IsOpen = true;
+    }
+
+    private void ConfirmDelete(VoiceNote note)
+    {
         Button confirm = new() { Content = "Delete", Style = (Style)Application.Current.Resources["AccentButtonStyle"] };
         Flyout flyout = new()
         {

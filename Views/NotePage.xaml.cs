@@ -5,8 +5,6 @@ using Microsoft.UI.Xaml.Controls;
 using TrayVoiceNotes.Models;
 using TrayVoiceNotes.Services;
 using Windows.ApplicationModel.DataTransfer;
-using Windows.Storage.Pickers;
-using WinRT.Interop;
 
 namespace TrayVoiceNotes.Views;
 
@@ -17,18 +15,14 @@ namespace TrayVoiceNotes.Views;
 public sealed partial class NotePage : Page
 {
     private readonly Action _goBack;
-    private readonly nint _windowHandle;
-    private readonly Action<bool> _setModal;
+    private readonly NoteExporter _exporter;
     private VoiceNote? _note;
     private bool _updating;
 
-    /// <param name="windowHandle">Owner for the save dialog.</param>
-    /// <param name="setModal">Tells the flyout a dialog is open, so it doesn't light-dismiss behind it.</param>
-    public NotePage(Action goBack, nint windowHandle, Action<bool> setModal)
+    public NotePage(Action goBack, NoteExporter exporter)
     {
         _goBack = goBack;
-        _windowHandle = windowHandle;
-        _setModal = setModal;
+        _exporter = exporter;
         InitializeComponent();
     }
 
@@ -173,85 +167,32 @@ public sealed partial class NotePage : Page
 
     private async void ExportAudio_Click(object sender, RoutedEventArgs e)
     {
-        if (_note is not { } note)
+        if (_note is { } note)
         {
-            return;
+            ExportBar.IsOpen = false;
+            ShowExportResult(await _exporter.ExportAudioAsync(note));
         }
-
-        string baseName = NoteExport.BaseName(note.CreatedAt);
-        await ExportAsync(
-            note,
-            "WAV audio",
-            ".wav",
-            baseName,
-            stream => NoteExport.CopyAudioAsync(NoteStore.AudioPath(note), stream));
     }
 
     private async void ExportZip_Click(object sender, RoutedEventArgs e)
     {
-        if (_note is not { } note)
+        if (_note is { } note)
+        {
+            ExportBar.IsOpen = false;
+            ShowExportResult(await _exporter.ExportZipAsync(note));
+        }
+    }
+
+    private void ShowExportResult(ExportResult result)
+    {
+        if (result.IsCancelled)
         {
             return;
         }
 
-        string baseName = NoteExport.BaseName(note.CreatedAt);
-        string audioPath = NoteStore.AudioPath(note);
-        string transcript = note.Transcript;
-        string notes = note.Notes;
-        await ExportAsync(
-            note,
-            "Zip archive",
-            ".zip",
-            baseName,
-            stream => NoteExport.WriteZipAsync(stream, audioPath, baseName, transcript, notes));
-    }
-
-    private async Task ExportAsync(VoiceNote note, string typeName, string extension, string suggestedName, Func<Stream, Task> write)
-    {
-        ExportBar.IsOpen = false;
-        if (!File.Exists(NoteStore.AudioPath(note)))
-        {
-            ShowExportResult(InfoBarSeverity.Error, "Couldn't export", "The audio file for this recording is missing.");
-            return;
-        }
-
-        // The save dialog takes focus from the flyout; keep the flyout up until it closes.
-        _setModal(true);
-        try
-        {
-            FileSavePicker picker = new()
-            {
-                SuggestedStartLocation = PickerLocationId.DocumentsLibrary,
-                SuggestedFileName = suggestedName,
-            };
-            picker.FileTypeChoices.Add(typeName, [extension]);
-            InitializeWithWindow.Initialize(picker, _windowHandle);
-
-            if (await picker.PickSaveFileAsync() is not { } file)
-            {
-                return;
-            }
-
-            await using Stream stream = await file.OpenStreamForWriteAsync();
-            stream.SetLength(0);
-            await write(stream);
-            ShowExportResult(InfoBarSeverity.Success, "Saved", file.Name);
-        }
-        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or InvalidDataException)
-        {
-            ShowExportResult(InfoBarSeverity.Error, "Couldn't export", ex.Message);
-        }
-        finally
-        {
-            _setModal(false);
-        }
-    }
-
-    private void ShowExportResult(InfoBarSeverity severity, string title, string message)
-    {
-        ExportBar.Severity = severity;
-        ExportBar.Title = title;
-        ExportBar.Message = message;
+        ExportBar.Severity = result.Severity;
+        ExportBar.Title = result.Title;
+        ExportBar.Message = result.Message;
         ExportBar.IsOpen = true;
     }
 

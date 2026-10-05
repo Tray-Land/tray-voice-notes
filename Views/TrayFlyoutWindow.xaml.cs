@@ -47,6 +47,7 @@ public sealed partial class TrayFlyoutWindow : WindowEx
     private static readonly TimeSpan CloseDelay = TimeSpan.FromMinutes(1);
 
     private readonly HWND _hwnd;
+    private readonly NoteExporter _exporter;
     private readonly FlyoutPage _page;
     private readonly ShellBackdrop _backdrop = new();
     private readonly UISettings _uiSettings = new();
@@ -82,7 +83,8 @@ public sealed partial class TrayFlyoutWindow : WindowEx
     {
         InitializeComponent();
         _hwnd = (HWND)WindowNative.GetWindowHandle(this);
-        _page = new FlyoutPage(ShowNotePage);
+        _exporter = new NoteExporter(_hwnd, SetModalOpen);
+        _page = new FlyoutPage(ShowNotePage, _exporter);
         PageHost.Content = _page;
 
         SystemBackdrop = _backdrop;
@@ -129,7 +131,7 @@ public sealed partial class TrayFlyoutWindow : WindowEx
 
     public void ShowNotePage(VoiceNote note)
     {
-        _notePage ??= new NotePage(ShowMainPage, _hwnd, SetModalOpen);
+        _notePage ??= new NotePage(ShowMainPage, _exporter);
         LeaveCurrentPage();
         _notePage.Show(note);
         PageHost.Content = _notePage;
