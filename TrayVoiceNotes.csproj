@@ -31,6 +31,11 @@
     <Content Include="Assets\Recording.ico" />
     <Content Include="Assets\Paused.ico" />
     <Content Remove="branding\**" />
+    <!-- Release builds (build-msix-for-gh.ps1) package the App Installer feed so the app keeps updating itself. -->
+    <Content Include="$(ReleaseAppInstallerPath)" Condition="'$(ReleaseAppInstallerPath)' != ''">
+      <Link>Update.appinstaller</Link>
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </Content>
     <!-- Icon generator and tests are not part of the app. -->
     <Compile Remove="tests\**" />
     <None Remove="tests\**" />
