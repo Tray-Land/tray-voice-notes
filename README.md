@@ -73,6 +73,10 @@ Models are fetched from the [whisper.cpp repository on Hugging Face](https://hug
 - Which Whisper model to use.
 - Start with Windows.
 
+## Install
+
+Download and open [TrayVoiceNotes.appinstaller](https://github.com/Tray-Land/tray-voice-notes/releases/latest/download/TrayVoiceNotes.appinstaller). Windows installs the right version for your PC and keeps it updated.
+
 ## Requirements
 
 - Windows 10 version 1809 (build 17763) or later. Windows 11 is recommended.
@@ -114,7 +118,14 @@ dotnet test .\tests\TrayVoiceNotes.Tests -c Debug
 
 ### Releasing
 
-`build-msix-for-gh.ps1` builds a signed MSIX, tags the repo and publishes a GitHub release. Signing is done by a local `sign-msix` function on the maintainer's machine, so no signing configuration lives in the repo. Use `-SkipRelease` to build and sign only.
+`build-msix-for-gh.ps1` builds a signed x64 and ARM64 `.msixbundle` plus the auto-updating `TrayVoiceNotes.appinstaller` feed, tags the repo and creates a draft GitHub release. Signing is done by a local `sign-msix` function on the maintainer's machine, so no signing configuration lives in the repo.
+
+1. Bump `Identity/@Version` in `Package.appxmanifest`, commit and push.
+2. Run `.\build-msix-for-gh.ps1` and review the draft release.
+3. Publish the draft without changing its tag.
+4. Run `.\build-msix-for-gh.ps1 -VerifyPublished` to check the stable link and every address in the feed.
+
+Use `-SkipRelease` to build and sign only, or `-SkipRelease -NoSign -OutputRoot <dir>` to check the whole build without signing.
 
 ## Project layout
 
